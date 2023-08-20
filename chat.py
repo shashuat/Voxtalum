@@ -40,4 +40,37 @@ def transcribe_audio(audio_file_path, openai_key):
         print(f"Error calling Whisper API: {str(e)}")
         return None
     
+def display_transcription(transcription):
+    if transcription:
+        st.write(f"Transcription: {transcription}")
+        with open("audio_transcription.text", "w+") as f:
+            f.write(transcription)
+    else:
+        st.write("Error transcribing audio")
+
+def record_and_transcribe_audio():
+    audio_bytes = audio_recorder()
+    transcription = None
+    if audio_bytes:
+        st.audio(audio_bytes, format=AUDIO_FORMAT)
+
+        with open(TEMP_AUDIO_PATH, "wb") as f:
+            f.write(audio_bytes)
+
+        if st.button("Transcribe"):
+            transcription = transcribe_audio(TEMP_AUDIO_PATH, openai.api_key)
+            os.remove(TEMP_AUDIO_PATH)
+            display_transcription(transcription)
+
+        return transcription
     
+
+def main():
+    st.write("# Voxtalum ")
+
+    db = load_database_and_embeddings(deeplake_data_set_path)
+
+    transcription = record_and_transcribe_audio()
+
+if __name__ == "__main__":
+    main()
