@@ -19,12 +19,12 @@ AUDIO_FORMAT = "audio/wav"
 
 openai.api_key = os.environ.get('OPENAI_API_KEY')
 eleven_api_key = os.environ.get('ELEVEN_API_KEY')
-deeplake_data_set_path = os.environ.get('DEEPLAKE_DATASET_PATH')
+deeplake_dataset_path = os.environ.get('DEEPLAKE_DATASET_PATH')
 
-def load_database_and_embeddings():
+def load_database_and_embeddings(deeplake_dataset_path):
     embeddings = OpenAIEmbeddings()
     db = DeepLake(
-        dataset_path=deeplake_data_set_path,
+        dataset_path=deeplake_dataset_path,
         read_only=True,
         embedding=embeddings
     )
@@ -64,13 +64,58 @@ def record_and_transcribe_audio():
 
         return transcription
     
+def get_user_input(transcription):
+    return st.text_input("", value=transcription if transcription else "", key='input')
+    
+def search_db(user_input, db):
+    print(user_input)
+    retriever = db.as_retriever()
+    retriever = db.as_retriever()
+    retriever.search_kwargs['distance_metric'] = 'cos'
+    retriever.search_kwargs['fetch_k'] = 100
+    retriever.search_kwargs['maximal_marginal_relevance'] = True
+    retriever.search_kwargs['k'] = 10
+
+    model = ChatOpenAI(model='gpt-3.5-turbo')
+
+    qa = RetrievalQA.from_llm(model, retriever=retriever, return_source_documents=True)
+
+    return qa({'query': user_input})
+
+def display_conversation(history):
+    for i in range(len(history['generated'])):
+        message(history['past'][i], is_user=True, key=str(i) + "_user")
+        message(history['generated'][i], key=str(i))
+
+        voice = 'Bella'
+        text = history['generated'][i]
+        audio = generate(text=text, voice=voice, api_key=eleven_api_key)
+        st.audio(audio, format='audio/mp3')
 
 def main():
     st.write("# Voxtalum ")
 
-    db = load_database_and_embeddings(deeplake_data_set_path)
+    db = load_database_and_embeddings(deeplake_dataset_path)
 
     transcription = record_and_transcribe_audio()
+
+    user_input = get_user_input(transcription)
+
+    if 'generated' not in st.session_state:
+        st.session_state['generated'] = ['Voxtalum is ready']
+
+    if 'past' not in st.session_state:
+        st.session_state['past'] = ['Hello World']
+
+    if user_input:
+        output = search_db(user_input, db)
+        print(output['source_documents'])
+        st.session_state.past.append(user_input)
+        response = str(output['result'])
+        st.session_state.generated.append(response)
+
+    if st.session_state['generated']:
+        display_conversation(st.session_state)
 
 if __name__ == "__main__":
     main()
